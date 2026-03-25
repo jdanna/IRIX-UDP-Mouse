@@ -207,6 +207,10 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
             self._set_jiggler_active(jiggler)
             self.__notifier.notify()
 
+
+### IRIX HACK
+    destip = '192.168.5.2'
+
     def send_button(self, ip, port, button, state):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
            message = f"{button},{state}".encode()  # Convert coordinates to bytes
@@ -216,19 +220,17 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
            message = f"WHEEL_{delta}".encode()  # Convert coordinates to bytes
            sock.sendto(message, (ip, port))  # Send message to the target IP and port
-           
-    def _send_mouse_button_event(self, button: str, state: bool) -> None:
-#        self.__mouse_current.send_button_event(button, state)
-        input_number = button
-        button_name = {272: "left", 273: "right", 274: "middle"}[input_number]
-        self.send_button('192.168.5.2', 5005, button_name, state)
 
     def send_coordinates(self, ip, port, pixel_x, pixel_y):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
            message = f"{pixel_x}_{pixel_y}".encode()  # Convert coordinates to bytes
            sock.sendto(message, (ip, port))  # Send message to the target IP and port
+                      
+    def _send_mouse_button_event(self, button: str, state: bool) -> None:
+        input_number = button
+        button_name = {272: "left", 273: "right", 274: "middle"}[input_number]
+        self.send_button(destip, 5005, button_name, state)
 
-           
     def _send_key_event(self, key: int, state: bool) -> None:
         self.__keyboard_proc.send_key_event(key, state)
 
@@ -238,23 +240,21 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
         pixel_y = int((to_y - input_min) / (input_max - input_min) * (screen_height - 1))
         x = str(pixel_x)
         y = str(pixel_y)
-        self.send_coordinates('192.168.5.2', 5005, pixel_x, pixel_y)
-        
+        self.send_coordinates(destip, 5005, pixel_x, pixel_y)
+     
+    def _send_mouse_wheel_event(self, delta_x: int, delta_y: int) -> None:
+        self.send_wheel(destip,5005,delta_y)
+
+### END IRIX HACK
 
     def _send_mouse_relative_event(self, delta_x: int, delta_y: int) -> None:
         self.__mouse_current.send_relative_event(delta_x, delta_y)
 
-    def _send_mouse_wheel_event(self, delta_x: int, delta_y: int) -> None:
-        #self.__mouse_current.send_wheel_event(delta_x, delta_y)
-        self.send_wheel('192.168.5.2',5005,delta_y)
-        
     def _clear_events(self) -> None:
         self.__keyboard_proc.send_clear_event()
         self.__mouse_proc.send_clear_event()
         if self.__mouse_alt_proc:
             self.__mouse_alt_proc.send_clear_event()
-
-    # =====
 
     def __get_current_mouse_mode(self) -> str:
         if len(self.__mouses) == 0:
