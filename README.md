@@ -8,6 +8,7 @@ For PS/2 SGI systems - a USB to PS/2 converter or a PiKVM Pico HID-PS2 bridge ca
 
 When `irix_host` is not set, the plugin behaves as a standard `otg` plugin with no changes to normal operation.
 
+Note - right now this has to run after login. I haven't figured out a way to run it for the login screen - as XDM is very specific about running a single executable and not allowing any other X clients.
 
 https://github.com/user-attachments/assets/904c69bb-c6a9-4fdc-bdd1-7fbee85c944d
 
