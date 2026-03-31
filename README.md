@@ -1,8 +1,8 @@
 # IRIX-UDP-Mouse
 
-Connect PiKVM to IRIX workstations via UDP mouse forwarding.
+Connect PiKVM to IRIX workstations via UDP mouse forwarding for absolute positioning.
 
-PiKVM's USB HID absolute mouse doesn't work with IRIX's X11 stack. This project patches the kvmd `otg` HID plugin to forward mouse events over UDP to a daemon running on the IRIX machine, which injects them via the XTest extension. Keyboard input continues to work normally through USB HID.
+This project patches the kvmd `otg` HID plugin to forward mouse events over UDP to a daemon running on the IRIX machine, which injects them via the XTest extension. Keyboard input continues to work normally through USB HID. If needed - a USB to PS/2 converter can be used for older SGI systems, or a PiKVM Pico HID-PS2 bridge.
 
 When `irix_host` is not set, the plugin behaves as a standard `otg` plugin with no changes to normal operation.
 
@@ -12,8 +12,8 @@ When `irix_host` is not set, the plugin behaves as a standard `otg` plugin with 
 
 ```
 kvmd/plugins/hid/otg/__init__.py   patched otg plugin — copy to PiKVM
-irix/mouse.c                        UDP daemon — compile and run on IRIX
-old/original_hack.py               original proof-of-concept (reference only)
+irix/mouse.c                       UDP daemon — compile and run on IRIX
+irix/mouse                         Pre-compiled binary of the IRIX reciever
 ```
 
 ---
