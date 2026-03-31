@@ -2,7 +2,9 @@
 
 Connect PiKVM to IRIX workstations via UDP mouse forwarding for absolute positioning.
 
-This project patches the kvmd `otg` HID plugin to forward mouse events over UDP to a daemon running on the IRIX machine, which injects them via the XTest extension. Keyboard input continues to work normally through USB HID. If needed - a USB to PS/2 converter can be used for older SGI systems, or a PiKVM Pico HID-PS2 bridge.
+This project patches the kvmd `otg` HID plugin to forward mouse events over UDP to a daemon running on the IRIX machine, which injects them via the XTest extension. Keyboard input continues to work normally through USB HID.
+
+For PS/2 SGI systems - a USB to PS/2 converter or a PiKVM Pico HID-PS2 bridge can be used
 
 When `irix_host` is not set, the plugin behaves as a standard `otg` plugin with no changes to normal operation.
 
