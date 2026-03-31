@@ -31,8 +31,6 @@ gcc -o mouse mouse.c -lX11 -lXtst
 
 ### Run
 
-The daemon must run as a user with access to the X display. Start it before connecting via PiKVM.
-
 ```sh
 ./mouse [-v] [-d :0]
 ```
@@ -47,6 +45,8 @@ To start automatically at login, add to `~/.sgisession`.
 ---
 
 ## PiKVM setup
+
+Switch PiKVM to read-write by running 'rw'
 
 ### 1. Find the plugin path
 
