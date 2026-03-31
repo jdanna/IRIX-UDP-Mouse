@@ -46,29 +46,34 @@ To start automatically at login, add to `~/.sgisession`.
 
 ## PiKVM setup
 
-Switch PiKVM to read-write by running 'rw'
+### 1. Switch PiKVM to read-write 
+```sh
+rw
+```
 
-### 1. Find the plugin path
+### 2. Find the plugin path
+
+Switch PiKVM to read-write and find the installed version
 
 ```sh
 find /usr/lib -path "*/kvmd/plugins/hid/otg/__init__.py" 2>/dev/null
 ```
 
-### 2. Back up the original
+### 3. Back up the original (replace correct version number)
 
 ```sh
-cp /usr/lib/python3.x/site-packages/kvmd/plugins/hid/otg/__init__.py \
-   /usr/lib/python3.x/site-packages/kvmd/plugins/hid/otg/__init__.py.orig
+cp /usr/lib/python3.XX/site-packages/kvmd/plugins/hid/otg/__init__.py \
+   /usr/lib/python3.XX/site-packages/kvmd/plugins/hid/otg/__init__.py.orig
 ```
 
-### 3. Install the patched plugin
+### 4. Install the patched plugin (replace correct version number)
 
 ```sh
 scp kvmd/plugins/hid/otg/__init__.py \
-    root@pikvm:/usr/lib/python3.x/site-packages/kvmd/plugins/hid/otg/__init__.py
+    root@pikvm:/usr/lib/python3.XX/site-packages/kvmd/plugins/hid/otg/__init__.py
 ```
 
-### 4. Configure `/etc/kvmd/override.yaml`
+### 5. Configure `/etc/kvmd/override.yaml`
 
 ```yaml
 kvmd:
@@ -80,39 +85,11 @@ kvmd:
     irix_screen_height: 1200     # IRIX display height in pixels
 ```
 
-Common SGI resolutions: `1280x1024`, `1600x1024`, `1920x1200`.
-
-### 5. Restart kvmd
+### 6. Restart kvmd
 
 ```sh
 systemctl restart kvmd
 ```
-
----
-
-## Reverting
-
-To disable IRIX forwarding without uninstalling, remove the `irix_*` lines from `override.yaml` and restart kvmd.
-
-To fully revert to the original plugin:
-
-```sh
-cp /usr/lib/python3.x/site-packages/kvmd/plugins/hid/otg/__init__.py.orig \
-   /usr/lib/python3.x/site-packages/kvmd/plugins/hid/otg/__init__.py
-systemctl restart kvmd
-```
-
-### After kvmd updates
-
-The patched file will be overwritten by `pacman -Syu`. Re-install after updates:
-
-```sh
-scp kvmd/plugins/hid/otg/__init__.py \
-    root@pikvm:/usr/lib/python3.x/site-packages/kvmd/plugins/hid/otg/__init__.py
-systemctl restart kvmd
-```
-
----
 
 ## UDP message format
 
