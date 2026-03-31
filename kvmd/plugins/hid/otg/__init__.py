@@ -37,12 +37,24 @@ from ....yamlconf import Option
 from ....validators.basic import valid_bool
 from ....validators.basic import valid_int_f1
 from ....validators.basic import valid_float_f01
+from ....validators.net import valid_ip_or_host
+from ....validators.net import valid_port
 from ....validators.os import valid_abs_path
 
 from .. import BaseHid
 
 from .keyboard import KeyboardProcess
 from .mouse import MouseProcess
+
+
+# Evdev button code → name mapping (matches kvmd's MOUSE_TO_EVDEV)
+_BUTTON_CODES: dict[int, str] = {
+    272: "left",
+    273: "right",
+    274: "middle",
+    275: "up",
+    276: "down",
+}
 
 
 # =====
@@ -58,6 +70,11 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
         mouse: dict[str, Any],
         mouse_alt: dict[str, Any],
         noop: bool,
+
+        irix_host: str,
+        irix_port: int,
+        irix_screen_width: int,
+        irix_screen_height: int,
 
         udc: str,  # XXX: Not from options, see /kvmd/apps/kvmd/__init__.py for details
     ) -> None:
@@ -93,6 +110,11 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
 
         self._set_jiggler_absolute(self.__mouse_current.is_absolute())
 
+        self.__irix_host = irix_host
+        self.__irix_port = irix_port
+        self.__irix_screen_width = irix_screen_width
+        self.__irix_screen_height = irix_screen_height
+
     @classmethod
     def get_plugin_options(cls) -> dict:
         return {
@@ -121,6 +143,10 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
                 "horizontal_wheel": Option(True, type=valid_bool),
             },
             "noop": Option(False, type=valid_bool),
+            "irix_host":          Option("",   type=valid_ip_or_host, if_empty=""),
+            "irix_port":          Option(5005, type=valid_port),
+            "irix_screen_width":  Option(1920, type=valid_int_f1),
+            "irix_screen_height": Option(1200, type=valid_int_f1),
             **cls._get_base_options(),
         }
 
@@ -155,6 +181,12 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
                     "active": self.__get_current_mouse_mode(),
                 },
                 **mouse_state,
+            },
+            "irix": {
+                "host": self.__irix_host,
+                "port": self.__irix_port,
+                "screen_width": self.__irix_screen_width,
+                "screen_height": self.__irix_screen_height,
             },
             **self._get_jiggler_state(),
         }
@@ -194,6 +226,10 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
         keyboard_output: (str | None)=None,
         mouse_output: (str | None)=None,
         jiggler: (bool | None)=None,
+        irix_host: (str | None)=None,
+        irix_port: (int | None)=None,
+        irix_screen_width: (int | None)=None,
+        irix_screen_height: (int | None)=None,
     ) -> None:
 
         _ = keyboard_output
@@ -206,55 +242,68 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
         if jiggler is not None:
             self._set_jiggler_active(jiggler)
             self.__notifier.notify()
+        if irix_host is not None:
+            self.__irix_host = irix_host
+            self.__notifier.notify()
+        if irix_port is not None:
+            self.__irix_port = irix_port
+            self.__notifier.notify()
+        if irix_screen_width is not None:
+            self.__irix_screen_width = irix_screen_width
+            self.__notifier.notify()
+        if irix_screen_height is not None:
+            self.__irix_screen_height = irix_screen_height
+            self.__notifier.notify()
 
+    # =====
 
-### IRIX HACK
-    destip = '192.168.5.2'
-
-    def send_button(self, ip, port, button, state):
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-           message = f"{button},{state}".encode()  # Convert coordinates to bytes
-           sock.sendto(message, (ip, port))  # Send message to the target IP and port
-
-    def send_wheel(self, ip, port, delta):
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-           message = f"WHEEL_{delta}".encode()  # Convert coordinates to bytes
-           sock.sendto(message, (ip, port))  # Send message to the target IP and port
-
-    def send_coordinates(self, ip, port, pixel_x, pixel_y):
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-           message = f"{pixel_x}_{pixel_y}".encode()  # Convert coordinates to bytes
-           sock.sendto(message, (ip, port))  # Send message to the target IP and port
-                      
-    def _send_mouse_button_event(self, button: str, state: bool) -> None:
-        input_number = button
-        button_name = {272: "left", 273: "right", 274: "middle"}[input_number]
-        self.send_button(destip, 5005, button_name, state)
+    def _send_mouse_button_event(self, button: int, state: bool) -> None:
+        if self.__irix_host:
+            button_name = _BUTTON_CODES.get(button)
+            if button_name is None:
+                get_logger(0).warning("IRIX: unknown mouse button code %d", button)
+                return
+            self.__udp_send(f"{button_name},{state}")
+        else:
+            self.__mouse_current.send_button_event(button, state)
 
     def _send_key_event(self, key: int, state: bool) -> None:
         self.__keyboard_proc.send_key_event(key, state)
 
     def _send_mouse_move_event(self, to_x: int, to_y: int) -> None:
-        input_min, input_max,screen_width,screen_height = -32768, 32768, 1920, 1200
-        pixel_x = int((to_x - input_min) / (input_max - input_min) * (screen_width - 1))
-        pixel_y = int((to_y - input_min) / (input_max - input_min) * (screen_height - 1))
-        x = str(pixel_x)
-        y = str(pixel_y)
-        self.send_coordinates(destip, 5005, pixel_x, pixel_y)
-     
-    def _send_mouse_wheel_event(self, delta_x: int, delta_y: int) -> None:
-        self.send_wheel(destip,5005,delta_y)
-
-### END IRIX HACK
+        if self.__irix_host:
+            input_min = -32768
+            input_max = 32768
+            pixel_x = int((to_x - input_min) / (input_max - input_min) * (self.__irix_screen_width - 1))
+            pixel_y = int((to_y - input_min) / (input_max - input_min) * (self.__irix_screen_height - 1))
+            self.__udp_send(f"{pixel_x}_{pixel_y}")
+        else:
+            self.__mouse_current.send_move_event(to_x, to_y)
 
     def _send_mouse_relative_event(self, delta_x: int, delta_y: int) -> None:
         self.__mouse_current.send_relative_event(delta_x, delta_y)
+
+    def _send_mouse_wheel_event(self, delta_x: int, delta_y: int) -> None:
+        if self.__irix_host:
+            _ = delta_x
+            self.__udp_send(f"WHEEL_{delta_y}")
+        else:
+            self.__mouse_current.send_wheel_event(delta_x, delta_y)
 
     def _clear_events(self) -> None:
         self.__keyboard_proc.send_clear_event()
         self.__mouse_proc.send_clear_event()
         if self.__mouse_alt_proc:
             self.__mouse_alt_proc.send_clear_event()
+
+    # =====
+
+    def __udp_send(self, message: str) -> None:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.sendto(message.encode(), (self.__irix_host, self.__irix_port))
+        except OSError as ex:
+            get_logger(0).warning("IRIX: UDP send to %s:%d failed: %s", self.__irix_host, self.__irix_port, ex)
 
     def __get_current_mouse_mode(self) -> str:
         if len(self.__mouses) == 0:
