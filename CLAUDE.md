@@ -11,7 +11,7 @@ Two components:
 - **`kvmd/plugins/hid/otg/__init__.py`**: a patched copy of kvmd's stock `otg` HID plugin. It's installed on the PiKVM by overwriting the stock file at `python3 -c 'import kvmd.plugins.hid.otg as m; print(m.__file__)'`. When `irix_host` is set, it forwards mouse events (and keys, depending on `irix_keyboard`) over UDP. Otherwise it behaves exactly like stock.
 - **`irix/mouse.c`**: the IRIX daemon. It listens on UDP 5005, parses the text protocol, and injects events with `XTestFake*Event`.
 
-`irix/mouse` is an old prebuilt binary (mouse only, no keyboard support). Don't treat it as built from the current source.
+No prebuilt binary is kept in the repo; `irix/mouse` is git-ignored so local builds don't get committed.
 
 On IRIX the daemon is normally installed as `/usr/bin/mouse`. It's started at the XDM login screen by adding `/usr/bin/mouse -d :0&` to `/var/X11/xdm/Xsetup_0`, which needs `DisplayManager*authorize: off` in `/var/X11/xdm/xdm-config` so it can connect to the X server. It can also be started per user from `~/.sgisession`. The README documents both.
 

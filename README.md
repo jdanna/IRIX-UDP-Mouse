@@ -36,10 +36,9 @@ https://github.com/user-attachments/assets/904c69bb-c6a9-4fdc-bdd1-7fbee85c944d
 ```
 kvmd/plugins/hid/otg/__init__.py   Patched kvmd otg HID plugin. Copy it onto the PiKVM.
 irix/mouse.c                       IRIX daemon source (strict C89, builds with MIPSpro cc or gcc).
-irix/mouse                         Older prebuilt IRIX binary (mouse only, no UDP keyboard support).
 ```
 
-The prebuilt `irix/mouse` predates keyboard forwarding. Build from `mouse.c` if you want `irix_keyboard: udp` or `both`.
+No prebuilt binary is included; build the daemon on the IRIX machine as described below.
 
 ---
 
