@@ -20,9 +20,12 @@
 # ========================================================================== #
 
 
+import os
 import asyncio
 import copy
 import socket
+import fcntl
+import struct
 
 from typing import AsyncGenerator
 
@@ -54,6 +57,14 @@ _BUTTON_CODES: dict[int, str] = {
     275: "up",
     276: "down",
 }
+
+# Linux 6.12+ f_hid holds HID GET_REPORT for up to 2.5s waiting on userspace
+# instead of replying immediately. IRIX's USB HID driver treats this as an error
+# and disables the keyboard ("disabling kbd after 5 consecutive errors").
+# Presetting a standing empty reply restores the old immediate-reply behavior.
+# struct usb_hidg_report {u8 report_id; u8 userspace_req; u16 length; u8 data[64]; u8 padding[4]}
+_GADGET_HID_WRITE_GET_REPORT = 0x40486742  # _IOW('g', 0x42, struct usb_hidg_report)
+_EMPTY_GET_REPORT = struct.pack("<BBH64s4x", 0, 0, 64, b"")
 
 
 # =====
@@ -99,6 +110,10 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
 
         self._set_jiggler_absolute(self.__mouse_current.is_absolute())
 
+        self.__hid_paths = [c.keyboard.device, c.mouse.device]
+        if c.mouse_alt.device:
+            self.__hid_paths.append(c.mouse_alt.device)
+
         self.__irix_host = c.irix_host
         self.__irix_port = c.irix_port
         self.__irix_screen_width = c.irix_screen_width
@@ -140,6 +155,13 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
         }
 
     async def sysprep(self) -> None:
+        if self.__irix_host:
+            get_logger(0).info("IRIX: forwarding mouse to %s:%d (%dx%d)", self.__irix_host, self.__irix_port,
+                               self.__irix_screen_width, self.__irix_screen_height)
+        else:
+            get_logger(0).info("IRIX: irix_host is not set, mouse goes to USB HID")
+        for path in self.__hid_paths:
+            self.__preset_get_report(path)
         self.__keyboard_proc.start()
         self.__mouse_proc.start()
         if self.__mouse_alt_proc:
@@ -284,6 +306,18 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
             self.__mouse_alt_proc.send_clear_event()
 
     # =====
+
+    def __preset_get_report(self, path: str) -> None:
+        try:
+            fd = os.open(path, os.O_RDWR | os.O_NONBLOCK)
+            try:
+                fcntl.ioctl(fd, _GADGET_HID_WRITE_GET_REPORT, _EMPTY_GET_REPORT)
+            finally:
+                os.close(fd)
+            get_logger(0).info("IRIX: preset immediate GET_REPORT reply on %s", path)
+        except OSError as ex:
+            # ENOTTY on kernels before 6.12, which already reply immediately
+            get_logger(0).info("IRIX: can't preset GET_REPORT reply on %s: %s", path, ex)
 
     def __udp_send(self, message: str) -> None:
         try:
