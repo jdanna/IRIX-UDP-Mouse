@@ -5,8 +5,11 @@
  * and injects them into the X server with the XTEST extension.
  *
  * Written in strict C89 so it builds with both MIPSpro and gcc:
- *   cc  -o mouse mouse.c -lX11 -lXtst
- *   gcc -o mouse mouse.c -lX11 -lXtst
+ *   cc     -o mouse mouse.c -lXtst -lXext -lX11    (MIPSpro, n32)
+ *   cc -64 -o mouse mouse.c -lXtst -lXext -lX11    (MIPSpro, 64-bit)
+ *   gcc    -o mouse mouse.c -lXtst -lXext -lX11
+ * Keep the library order: the 64-bit libXtst is a static archive and needs
+ * libXext and libX11 listed after it.
  */
 
 #include <stdio.h>
