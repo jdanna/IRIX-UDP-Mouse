@@ -28,12 +28,14 @@ import fcntl
 import struct
 
 from typing import AsyncGenerator
+from typing import Any
 
 from .... import aiomulti
 
 from ....yamlconf import Section
 from ....yamlconf import Option
 
+from ....validators import check_string_in_list
 from ....validators.basic import valid_bool
 from ....validators.basic import valid_int_f1
 from ....validators.basic import valid_float_f01
@@ -65,6 +67,13 @@ _BUTTON_CODES: dict[int, str] = {
 # struct usb_hidg_report {u8 report_id; u8 userspace_req; u16 length; u8 data[64]; u8 padding[4]}
 _GADGET_HID_WRITE_GET_REPORT = 0x40486742  # _IOW('g', 0x42, struct usb_hidg_report)
 _EMPTY_GET_REPORT = struct.pack("<BBH64s4x", 0, 0, 64, b"")
+
+
+def _valid_irix_keyboard(arg: Any) -> str:
+    # usb:  keys go only to the USB keyboard (stock behavior)
+    # udp:  keys go only to the IRIX daemon over UDP
+    # both: keys go to both; USB covers the PROM, UDP covers the logged-in X session
+    return check_string_in_list(arg, "IRIX keyboard transport", ["usb", "udp", "both"])
 
 
 # =====
@@ -118,6 +127,7 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
         self.__irix_port = c.irix_port
         self.__irix_screen_width = c.irix_screen_width
         self.__irix_screen_height = c.irix_screen_height
+        self.__irix_keyboard = c.irix_keyboard
 
     @classmethod
     def get_plugin_options(cls) -> dict:
@@ -151,13 +161,15 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
             "irix_port":          Option(5005, type=valid_port),
             "irix_screen_width":  Option(1920, type=valid_int_f1),
             "irix_screen_height": Option(1200, type=valid_int_f1),
+            "irix_keyboard":      Option("usb", type=_valid_irix_keyboard),
             **super().get_plugin_options(),
         }
 
     async def sysprep(self) -> None:
         if self.__irix_host:
-            get_logger(0).info("IRIX: forwarding mouse to %s:%d (%dx%d)", self.__irix_host, self.__irix_port,
-                               self.__irix_screen_width, self.__irix_screen_height)
+            get_logger(0).info("IRIX: forwarding mouse to %s:%d (%dx%d), keyboard transport: %s",
+                               self.__irix_host, self.__irix_port,
+                               self.__irix_screen_width, self.__irix_screen_height, self.__irix_keyboard)
         else:
             get_logger(0).info("IRIX: irix_host is not set, mouse goes to USB HID")
         for path in self.__hid_paths:
@@ -196,6 +208,7 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
                 "port": self.__irix_port,
                 "screen_width": self.__irix_screen_width,
                 "screen_height": self.__irix_screen_height,
+                "keyboard": self.__irix_keyboard,
             },
             **self._get_jiggler_state(),
         }
@@ -214,6 +227,8 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
                 yield new
 
     async def reset(self) -> None:
+        if self.__irix_host:
+            self.__udp_send("RESET")
         self.__keyboard_proc.send_reset_event()
         self.__mouse_proc.send_reset_event()
         if self.__mouse_alt_proc:
@@ -277,7 +292,10 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
             self.__mouse_current.send_button_event(button, state)
 
     def _send_key_event(self, key: int, state: bool) -> None:
-        self.__keyboard_proc.send_key_event(key, state)
+        if self.__irix_host and self.__irix_keyboard != "usb":
+            self.__udp_send(f"KEY_{key},{state}")
+        if not self.__irix_host or self.__irix_keyboard != "udp":
+            self.__keyboard_proc.send_key_event(key, state)
 
     def _send_mouse_move_event(self, to_x: int, to_y: int) -> None:
         if self.__irix_host:
@@ -300,6 +318,9 @@ class Plugin(BaseHid):  # pylint: disable=too-many-instance-attributes
             self.__mouse_current.send_wheel_event(delta_x, delta_y)
 
     def _clear_events(self) -> None:
+        if self.__irix_host:
+            # Release anything the IRIX daemon is holding down (keys and mouse buttons)
+            self.__udp_send("RESET")
         self.__keyboard_proc.send_clear_event()
         self.__mouse_proc.send_clear_event()
         if self.__mouse_alt_proc:
