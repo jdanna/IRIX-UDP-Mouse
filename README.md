@@ -17,12 +17,15 @@ When `irix_host` is not set, the plugin behaves exactly like the stock kvmd `otg
 
 https://github.com/user-attachments/assets/904c69bb-c6a9-4fdc-bdd1-7fbee85c944d
 
+### Security warning!
+This is a total hack and leaves XDM exposed to external clients, and accepts mouse and keyboard input from the network. You shouldn't ever be exposing an IRIX machine to the public internet anyway, but please keep this on internal networks only.
+
 ### Limitations
 
 - **Only works while X is running.** The daemon is an X client, so the PROM and the text console still need the USB keyboard. It does work at the graphical login screen if you start it from XDM; see [Starting at the login screen (XDM)](#starting-at-the-login-screen-xdm).
 - **The mouse needs the PiKVM in absolute mouse mode.** Only absolute moves are forwarded; relative mouse mode still goes out over USB.
 - **Keystrokes use a US layout.** Media, volume and power keys are not forwarded.
-- **kvmd updates overwrite the plugin.** Reinstall it after every PiKVM update; see [Updating PiKVM](#updating-pikvm).
+- **kvmd updates overwrite the plugin.** Reinstall it after every PiKVM update
 
 ### Connecting the keyboard
 
@@ -44,13 +47,6 @@ No prebuilt binary is included; build the daemon on the IRIX machine as describe
 
 ## IRIX setup
 
-### Requirements
-
-- **X11 and XTest development libraries.** These come with IRIX 6.5's development discs (Development Foundation and Development Libraries).
-- **A C compiler**, either one of:
-  - **MIPSpro C**, the "MIPSpro C Compiler 7.4" disc. The `cc` command is only a driver; if the C compiler itself isn't installed, `cc` fails with `cannot exec /usr/lib32/cmplrs/fec`. The C++ compiler's files (`fecc`) don't provide it.
-  - **gcc**, from Nekoware, freeware, or another source.
-
 ### Build
 
 ```sh
@@ -66,7 +62,6 @@ cc -64 -o mouse mouse.c -lXtst -lXext -lX11
 gcc -o mouse mouse.c -lXtst -lXext -lX11
 ```
 
-Keep the libraries in that order. The 64-bit `libXtst` is a static archive, so `libXext` and `libX11` have to come after it. The wrong order fails with unresolved symbols such as `XextAddDisplay` or `_XReply`. The n32 and 64-bit builds behave the same, so either is fine.
 
 ### Run
 
@@ -92,55 +87,30 @@ cp mouse /usr/bin/mouse
 chmod 755 /usr/bin/mouse
 ```
 
-**2. Start it from `Xsetup_0`.** XDM runs `/var/X11/xdm/Xsetup_0` as root just before it shows the login screen on display `:0`. Add this line, before any `exit` in the script:
+**2. Start it from `Xsetup_0`.**  Add this line to `/var/X11/xdm/Xsetup_0` 
 
 ```sh
 /usr/bin/mouse -d :0&
 ```
 
-The trailing `&` is required. XDM waits for `Xsetup_0` to finish before showing the login screen, so the daemon must run in the background.
-
-**3. Turn off XDM's X authorization.** By default XDM protects the X server with an authorization cookie, which stops the daemon from connecting. In `/var/X11/xdm/xdm-config`, add or change this line:
+**3. Turn off XDM's X authorization.** By default XDM only allows the login screen to autohrize. In `/var/X11/xdm/xdm-config`, add or change this line:
 
 ```
 DisplayManager*authorize:               off
 ```
 
-**4. Restart the graphics system** so XDM rereads its configuration (or just reboot):
+**4. Restart XDM ** :
 
 ```sh
-/usr/gfx/stopgfx; /usr/gfx/startgfx
+/etc/init.d/xdm stop
+/etc/init.d/xdm start
 ```
-
-The cursor and keys should now work at the login screen.
-
-**Security:** with authorization off, the X server no longer requires a cookie, so any program that can reach it can connect to your display. On a trusted home or lab network that's usually fine. Otherwise, restrict access to the machine with a firewall (`ipfilterd`).
-
-**If it stops working after login:** depending on your setup, XDM may restart the X server when you log in, which ends the login-screen copy of the daemon. If that happens, also start it from your session as described below. If the login-screen copy is still running, the second copy just exits with `Bind failed: Address already in use`, which is harmless.
-
-### Starting when you log in (per user)
-
-Without the XDM setup, or as a backup to it, start the daemon from `~/.sgisession`:
-
-```sh
-/usr/bin/mouse &
-```
-
-### Check it
-
-With the daemon running in your X session, run this from any machine on the network:
-
-```sh
-echo -n "640_512" | nc -u <irix-ip> 5005        # cursor jumps to 640,512
-```
-
-With `-v`, the daemon prints `Received: 640_512` and `Mouse moved to position (640, 512).`
 
 ---
 
 ## PiKVM setup
 
-All commands run on the PiKVM as root, except the `scp`.
+On the PiKVM as root:
 
 ### 1. Make the filesystem writable
 
@@ -171,7 +141,6 @@ From the machine with this repository, using the path from step 2:
 scp kvmd/plugins/hid/otg/__init__.py root@pikvm:/usr/lib/python3.XX/site-packages/kvmd/plugins/hid/otg/__init__.py
 ```
 
-Copy only `__init__.py`, not the `__pycache__` directory.
 
 ### 5. Configure `/etc/kvmd/override.yaml`
 
@@ -187,8 +156,6 @@ kvmd:
         irix_screen_height: 1200     # IRIX display height in pixels
         irix_keyboard: both          # usb | udp | both, see "Keyboard transport"
 ```
-
-Use spaces, not tabs, and indent the `irix_*` keys the same as `type:`.
 
 ### 6. Restart kvmd and check
 
@@ -300,35 +267,6 @@ echo -n "RESET"        | nc -u <irix-ip> 5005     # release everything
 - **`Bind failed: Address already in use`.** Another copy of the daemon is running; check with `ps -ef | grep mouse`.
 - **`Unable to open X display :0`.** Run the daemon from inside your desktop session, or set `DISPLAY` first. This also happens when you're logged in over telnet or SSH. If you start it from `Xsetup_0`, this error usually means XDM's authorization is still on; check `DisplayManager*authorize: off` in `xdm-config` and restart graphics.
 - **Nothing works at the login screen.** Check that `/usr/bin/mouse -d :0&` is in `/var/X11/xdm/Xsetup_0` before any `exit`, and that the daemon is running (`ps -ef | grep mouse`) while the login screen is up.
-- **`X server ... does not support the XTEST extension`.** The X server needs the XTest extension to inject input.
-- **Packets arrive (`Received: ...` with `-v`) but nothing happens.** Use `-d` to point the daemon at the right display, and run it as the logged-in user.
-- **Nothing arrives at all.** Try `echo -n "640_512" | nc -u <irix-ip> 5005` from the PiKVM. If that does nothing either, check the network path and any IRIX packet filtering (`ipfilterd`).
+- **Nothing arrives at all.** Try `echo -n "640_512" | nc -u <irix-ip> 5005` from the PiKVM. If that does nothing, check the network connectivity
 - **Keys typed twice.** You're using `irix_keyboard: both` and the USB keyboard also works inside IRIX. Switch to `usb` or `udp`.
 
-### Build
-
-- **`cc ERROR: cannot exec /usr/lib32/cmplrs/fec`.** The MIPSpro C compiler isn't installed, only the `cc` driver; see [Requirements](#requirements). Use gcc in the meantime.
-- **`Unresolved text symbol "XextAddDisplay"` (or `_XReply`, `XQueryExtension`, ...).** Wrong library order. Use `-lXtst -lXext -lX11`.
-
----
-
-## Updating PiKVM
-
-kvmd updates (`pacman -Syu`) replace the plugin with the stock version. The PiKVM keeps working, but IRIX forwarding stops silently: kvmd ignores the `irix_*` keys it no longer recognizes. After every update:
-
-1. Repeat PiKVM setup steps 1–4. The Python version in the path may have changed.
-2. Restart kvmd and look for the `IRIX:` log line (step 6).
-
-If a new kvmd release changes the plugin interface, compare this repository's `__init__.py` with the new stock one and carry the IRIX additions over.
-
-## Reverting to stock
-
-```sh
-rw
-P=$(python3 -c 'import kvmd.plugins.hid.otg as m; print(m.__file__)')
-cp -p "$P.orig" "$P"
-systemctl restart kvmd
-ro
-```
-
-You can leave the `irix_*` keys in `override.yaml`; the stock plugin ignores them.
